@@ -47,6 +47,18 @@ export interface ClientSafeProvider {
   callbackUrl: string
 }
 
+/**
+ * The props for the redirectUser function
+ */
+export type RedirectUserProps = {
+  redirect: boolean
+  isSupportingReturn: boolean
+  data: any
+  callbackUrl?: string
+  res: Response
+  error: string | null
+}
+
 export interface SignInOptions extends Record<string, unknown> {
   /**
    * Specify to which URL the user will be redirected after signing in. Defaults to the page URL the sign-in is initiated from.
@@ -55,7 +67,16 @@ export interface SignInOptions extends Record<string, unknown> {
    */
   callbackUrl?: string
   /** [Documentation](https://next-auth.js.org/getting-started/client#using-the-redirect-false-option) */
-  redirect?: boolean
+  // TODO: Update docs.
+  /**
+   * Specify whether to redirect user on sign-in success result or not
+   */
+  redirectOnSuccess?: boolean
+
+  /**
+   * Specify whether to redirect user on sign-in failure or not
+   */
+  redirectOnFailure?: boolean
 }
 
 export interface SignInResponse {

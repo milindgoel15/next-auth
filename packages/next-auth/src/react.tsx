@@ -28,6 +28,7 @@ import type {
   AuthClientConfig,
   ClientSafeProvider,
   LiteralUnion,
+  RedirectUserProps,
   SessionProviderProps,
   SignInAuthorizationParams,
   SignInOptions,
@@ -226,7 +227,11 @@ export async function signIn<
 ): Promise<
   P extends RedirectableProviderType ? SignInResponse | undefined : undefined
 > {
-  const { callbackUrl = window.location.href, redirect = true } = options ?? {}
+  const {
+    callbackUrl = window.location.href,
+    redirectOnSuccess = true,
+    redirectOnFailure = true,
+  } = options ?? {}
 
   const baseUrl = apiBaseUrl(__NEXTAUTH)
   const providers = await getProviders()
@@ -251,43 +256,84 @@ export async function signIn<
     isCredentials ? "callback" : "signin"
   }/${provider}`
 
+  const _signInUrl = `${signInUrl}${
+    authorizationParams ? `?${new URLSearchParams(authorizationParams)}` : ""
+  }`
+
   const csrfToken = await getCsrfToken()
-  const res = await fetch(
-    `${signInUrl}?${new URLSearchParams(authorizationParams)}`,
-    {
-      method: "post",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "X-Auth-Return-Redirect": "1",
-      },
-      // @ts-expect-error
-      body: new URLSearchParams({ ...options, csrfToken, callbackUrl }),
-    }
-  )
 
+	const res = await fetch(_signInUrl, {
+		method: "post",
+		headers: {
+			"Content-Type": "application/x-www-form-urlencoded",
+		},
+		// @ts-expect-error
+		body: new URLSearchParams({
+			...options,
+			csrfToken: csrfToken,
+			callbackUrl,
+			json: true,
+		}),
+	});
+  
   const data = await res.json()
-
-  // TODO: Do not redirect for Credentials and Email providers by default in next major
-  if (redirect || !isSupportingReturn) {
-    const url = data.url ?? callbackUrl
-    window.location.href = url
-    // If url contains a hash, the browser does not reload the page. We reload manually
-    if (url.includes("#")) window.location.reload()
-    return
-  }
-
-  const error = new URL(data.url).searchParams.get("error")
 
   if (res.ok) {
     await __NEXTAUTH._getSession({ event: "storage" })
+
+    // TODO: Do not redirectOnSuccess for Credentials and Email providers by default in next major
+    redirectUser({
+      data: data,
+      redirect: redirectOnSuccess,
+      isSupportingReturn: isSupportingReturn,
+      res: res,
+      callbackUrl: callbackUrl,
+      error: null,
+    })
+    return {
+      status: res.status,
+      ok: res.ok,
+      url: data.url,
+    } as any
   }
+  const error = new URL(data.url).searchParams.get("error")
+  redirectUser({
+    data: data,
+    redirect: redirectOnFailure,
+    isSupportingReturn: isSupportingReturn,
+    res: res,
+    callbackUrl: callbackUrl,
+    error: error,
+  })
 
   return {
     error,
     status: res.status,
     ok: res.ok,
-    url: error ? null : data.url,
+    url: null,
   } as any
+}
+
+const redirectUser = ({
+  redirect,
+  isSupportingReturn,
+  data,
+  callbackUrl,
+  res,
+  error,
+}: RedirectUserProps) => {
+  if (redirect || !isSupportingReturn) {
+    const url = data.url ?? callbackUrl
+    window.location.href = url
+    // If url contains a hash, the browser does not reload the page. We reload manually
+    if (url.includes("#")) window.location.reload()
+    return {
+      error,
+      status: res.status,
+      ok: res.ok,
+      url: error ? null : data.url,
+    } as any
+  }
 }
 
 /**
